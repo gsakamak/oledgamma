@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # Page configuration
-st.set_page_config(page_title="Auto Gamma Tuning (YD6308)", layout="wide")
+st.set_page_config(page_title="OLED Gamma Tuning", layout="wide")
 
 # ==========================================
 # Login Authentication Logic
@@ -99,12 +99,9 @@ def process_gamma_tuning(measured_dac, measured_luminance, target_gamma=1.0):
 # サイドバーの設定
 with st.sidebar:
     col1, col2, col3 = st.columns([1, 10, 1])
-
     with col2:
-        # ロゴ画像を表示
+        # ワーニング対策として use_container_width に変更
         st.image("yitoa.png", use_container_width=True)
-
-        # テキスト表示で著作権を2行、中央揃えで表示
         st.markdown(
             """
             <div style='text-align: center; font-size: 0.85em; color: gray;'>
@@ -159,13 +156,13 @@ with st.sidebar:
         y_cct_max = st.number_input("ΔCCT Max", value=2000, step=500)
 
 # メインコンテンツエリアの構築
-st.title("Auto Gamma Tuning App (OLED: YD6308)")
-st.markdown("Upload measured CSV data (4-column format) to automatically calculate register values matching the target gamma.")
+st.title("OLED Gamma Tuning")
+st.markdown("Upload multiple measured CSV data files (4-column format) to automatically calculate register values and compare characteristics.")
 
 MAX_DAC = 4095.0
 parsed_data = {}
 
-# Data loading process
+# Data loading process (複数ファイルループ)
 if uploaded_files:
     for f in uploaded_files:
         try:
@@ -281,7 +278,9 @@ if parsed_data:
     plotly_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 
     for i, (fname, d) in enumerate(parsed_data.items()):
-        c = plotly_colors[i % len(plotly_colors)]
+        c = plotly_colors[(i * 2) % len(plotly_colors)]
+        c_tgt = plotly_colors[(i * 2 + 1) % len(plotly_colors)]
+        
         res = d["res"]
         scale_div = res['max_lum'] if is_normalized else 1.0
         num_points = len(res['x_points']) 
@@ -291,7 +290,7 @@ if parsed_data:
             fig.add_trace(go.Scatter(x=d["meas_gray"], y=d["meas_lum"]/scale_div, mode='markers', name=f"Points ({fname})", marker=dict(color=c, size=5, symbol='circle'), showlegend=False), row=1, col=1)
         
         if show_target:
-            fig.add_trace(go.Scatter(x=res['x_cont_8bit'], y=res['lum_tgt']/scale_div, name=f"Target ({fname})", line=dict(color=c, width=2)), row=1, col=1)
+            fig.add_trace(go.Scatter(x=res['x_cont_8bit'], y=res['lum_tgt']/scale_div, name=f"Target ({fname})", line=dict(color=c_tgt, width=2)), row=1, col=1)
         
         if show_adj:
             fig.add_trace(go.Scatter(x=res['x_cont_8bit'], y=res['lum_adj']/scale_div, name=f"Adj ({fname})", line=dict(dash='dot', color=c, width=2)), row=1, col=1)
@@ -307,7 +306,7 @@ if parsed_data:
             fig.add_trace(go.Scatter(x=res['x_cont_8bit'], y=res['gam_meas'], name=f"Meas Gam ({fname})", line=dict(dash='dash', color=c), opacity=0.6, showlegend=False), row=1, col=2)
             fig.add_trace(go.Scatter(x=d["meas_gray"], y=d["calc_gamma"], mode='markers', marker=dict(color=c, size=5, symbol='circle'), showlegend=False), row=1, col=2)
         if show_target:
-            fig.add_trace(go.Scatter(x=res['x_cont_8bit'], y=res['gam_tgt'], name=f"Tgt Gam ({fname})", line=dict(color=c, width=2), showlegend=False), row=1, col=2)
+            fig.add_trace(go.Scatter(x=res['x_cont_8bit'], y=res['gam_tgt'], name=f"Tgt Gam ({fname})", line=dict(color=c_tgt, width=2), showlegend=False), row=1, col=2)
         if show_adj:
             fig.add_trace(go.Scatter(x=res['x_cont_8bit'], y=res['gam_adj'], name=f"Adj Gam ({fname})", line=dict(dash='dot', color=c, width=2), showlegend=False), row=1, col=2)
         if show_cp:
