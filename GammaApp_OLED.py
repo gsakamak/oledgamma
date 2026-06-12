@@ -100,8 +100,8 @@ def process_gamma_tuning(measured_dac, measured_luminance, target_gamma=1.0):
 with st.sidebar:
     col1, col2, col3 = st.columns([1, 10, 1])
     with col2:
-        # ワーニング対策として use_container_width に変更
-        st.image("yitoa.png", use_container_width=True)
+        # ワーニングを回避するため、固定幅で指定
+        st.image("yitoa.png", width=200)
         st.markdown(
             """
             <div style='text-align: center; font-size: 0.85em; color: gray;'>
@@ -342,6 +342,7 @@ if parsed_data:
     
     fig.update_layout(height=850, hovermode="closest", legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5, bgcolor="rgba(255, 255, 255, 0.8)", bordercolor="lightgray", borderwidth=1), margin=dict(t=80))
     
+    # ワーニングを回避するため、width="stretch" を使用
     st.plotly_chart(fig, width="stretch")
     st.markdown("---")
 
@@ -397,4 +398,5 @@ if parsed_data:
         "CCT (K)": "{:.0f}", "ΔCCT": "{:.0f}", "Δu'v' (Δduv)": "{:.4f}"
     }, na_rep="-").map(highlight_inversion, subset=["L diff"])
 
+    # ワーニングを回避するため、width="stretch" を使用
     st.dataframe(styled_df, width="stretch", height=500)
