@@ -121,7 +121,7 @@ with st.sidebar:
     st.markdown("---")
 
     st.header("1. Basic Settings")
-    target_gamma_input = st.number_input("Target Gamma", min_value=1.0, max_value=3.0, value=1.0, step=0.1)
+    target_gamma_input = st.number_input("Target Gamma", min_value=1.0, max_value=3.0, value=2.2, step=0.1)
     
     st.markdown("---")
     st.subheader("2. Upload CSV File(s)")
@@ -135,11 +135,60 @@ with st.sidebar:
     
     color_x_axis = st.radio("Color Tracking X-Axis", ("Grayscale", "Luminance"))
     
+    # ---------------------------------------------------------
+    # Pre-scan for dynamic Y-axis defaults (Luminance & L diff)
+    # ---------------------------------------------------------
+    pre_lum_min = 0.0
+    pre_lum_max = 500.0
+    pre_ldiff_min = -5.0
+    pre_ldiff_max = 50.0
+
+    if uploaded_files:
+        tmp_lums = []
+        tmp_ldiffs = []
+        for f in uploaded_files:
+            try:
+                tmp_df = pd.read_csv(f, header=None)
+                f.seek(0) # 本処理用にポインタをリセット
+                tmp_df_numeric = tmp_df.apply(pd.to_numeric, errors='coerce')
+                if len(tmp_df.columns) >= 4:
+                    tmp_df_clean = tmp_df_numeric.dropna(subset=[0, 1, 2, 3])
+                    if not tmp_df_clean.empty:
+                        m_g = tmp_df_clean.iloc[:, 0].values
+                        m_l = tmp_df_clean.iloc[:, 3].values
+                        tmp_lums.append(m_l)
+                        
+                        s_idx = np.argsort(m_g)
+                        l_asc = m_l[s_idx]
+                        ld = np.diff(l_asc)
+                        if len(ld) > 0:
+                            tmp_ldiffs.append(ld)
+            except Exception:
+                f.seek(0)
+                
+        if tmp_lums:
+            all_lums = np.concatenate(tmp_lums)
+            pre_lum_min = float(np.nanmin(all_lums))
+            pre_lum_max = float(np.nanmax(all_lums))
+        if tmp_ldiffs:
+            all_lds = np.concatenate(tmp_ldiffs)
+            pre_ldiff_min = float(np.nanmin(all_lds))
+            pre_ldiff_max = float(np.nanmax(all_lds))
+    # ---------------------------------------------------------
+    
     st.markdown("#### Y-Axis Scale Adjustment")
     with st.expander("Adjust Graph Y-Axis Range", expanded=False):
         st.caption("Grayscale vs Luminance")
-        lum_min_val = -0.05 if is_normalized else -10.0
-        lum_max_val = 1.05 if is_normalized else 1000.0
+        if is_normalized:
+            lum_min_val = -0.05
+            lum_max_val = 1.05
+        else:
+            margin = (pre_lum_max - pre_lum_min) * 0.05 if pre_lum_max > pre_lum_min else 10.0
+            lum_min_val = float(pre_lum_min - margin)
+            lum_max_val = float(pre_lum_max + margin)
+            if lum_max_val <= lum_min_val:
+                lum_max_val = lum_min_val + 10.0
+
         y_lum_min = st.number_input("Luminance Min", value=lum_min_val, step=0.1 if is_normalized else 10.0)
         y_lum_max = st.number_input("Luminance Max", value=lum_max_val, step=0.1 if is_normalized else 10.0)
         
@@ -154,6 +203,20 @@ with st.sidebar:
         st.caption("Grayscale vs ΔCCT")
         y_cct_min = st.number_input("ΔCCT Min", value=0, step=500)
         y_cct_max = st.number_input("ΔCCT Max", value=2000, step=500)
+        
+        st.caption("Grayscale vs Chromaticity (x, y)")
+        y_xy_min = st.number_input("Chromaticity Min", value=0.0, step=0.05, format="%.4f")
+        y_xy_max = st.number_input("Chromaticity Max", value=0.8, step=0.05, format="%.4f")
+        
+        st.caption("Grayscale vs L diff")
+        ldiff_margin = (pre_ldiff_max - pre_ldiff_min) * 0.1 if pre_ldiff_max > pre_ldiff_min else 5.0
+        def_ldiff_min = float(pre_ldiff_min - ldiff_margin)
+        def_ldiff_max = float(pre_ldiff_max + ldiff_margin)
+        if def_ldiff_max <= def_ldiff_min:
+            def_ldiff_max = def_ldiff_min + 10.0
+            
+        y_ldiff_min = st.number_input("L diff Min", value=def_ldiff_min, step=1.0)
+        y_ldiff_max = st.number_input("L diff Max", value=def_ldiff_max, step=1.0)
 
 # メインコンテンツエリアの構築
 st.title("OLED Gamma Tuning")
@@ -259,6 +322,16 @@ else:
 # Graph plotting
 if parsed_data:
     st.header("Tuning Curves & Color Tracking")
+    
+    # 複数ファイル入力時のグラフ表示選択
+    display_files = list(parsed_data.keys())
+    if len(parsed_data) > 1:
+        display_files = st.multiselect(
+            "Select files to display on graphs:", 
+            options=list(parsed_data.keys()), 
+            default=list(parsed_data.keys())
+        )
+
     st.markdown("##### Toggle Graph Display")
     col_t1, col_t2, col_t3, col_t4 = st.columns(4)
     show_meas = col_t1.checkbox("Measured", value=True)
@@ -267,10 +340,19 @@ if parsed_data:
     show_cp = col_t4.checkbox("CP Points", value=True)
     
     color_x_label = "Luminance" if color_x_axis == "Luminance" else "Grayscale"
+    
+    # サブプロットを3行2列に変更
     fig = make_subplots(
-        rows=2, cols=2, 
-        subplot_titles=("Grayscale vs Luminance", "Grayscale vs Gamma Value", f"{color_x_label} vs Δu'v' (Δduv)", f"{color_x_label} vs ΔCCT"),
-        vertical_spacing=0.15 
+        rows=3, cols=2, 
+        subplot_titles=(
+            "Grayscale vs Luminance", 
+            "Grayscale vs Gamma Value", 
+            f"{color_x_label} vs Δu'v' (Δduv)", 
+            f"{color_x_label} vs ΔCCT", 
+            f"{color_x_label} vs Chromaticity (x, y)",
+            f"{color_x_label} vs L diff"
+        ),
+        vertical_spacing=0.1 
     )
     
     y_title = 'Normalized Luminance' if is_normalized else 'Luminance (nits)'
@@ -278,6 +360,10 @@ if parsed_data:
     plotly_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 
     for i, (fname, d) in enumerate(parsed_data.items()):
+        # 選択されていないファイルはグラフ描画からスキップ
+        if fname not in display_files:
+            continue
+            
         c = plotly_colors[(i * 2) % len(plotly_colors)]
         c_tgt = plotly_colors[(i * 2 + 1) % len(plotly_colors)]
         
@@ -325,22 +411,59 @@ if parsed_data:
         if show_meas:
             fig.add_trace(go.Scatter(x=color_x_data, y=d["delta_cct"], mode='lines+markers', name=f"ΔCCT ({fname})", line=dict(color=c, width=2), marker=dict(size=4), hovertemplate=fname + "<br>Data: " + hover_x_format + "<br>ΔCCT: %{y:.0f} K<extra></extra>", showlegend=False), row=2, col=2)
 
-    fig.update_xaxes(title_text="Input Grayscale (0-255)", range=[-5, 260], row=1, col=1)
-    fig.update_xaxes(title_text="Input Grayscale (0-255)", range=[-5, 260], row=1, col=2)
+        # Chromaticity (x, y) - X軸変更対応
+        if show_meas:
+            fig.add_trace(go.Scatter(x=color_x_data, y=d["meas_x"], mode='lines+markers', name=f"x ({fname})", line=dict(color=c, width=2, dash='solid'), marker=dict(size=4), hovertemplate=fname + "<br>Data: " + hover_x_format + "<br>x: %{y:.4f}<extra></extra>", showlegend=False), row=3, col=1)
+            fig.add_trace(go.Scatter(x=color_x_data, y=d["meas_y"], mode='lines+markers', name=f"y ({fname})", line=dict(color=c, width=2, dash='dash'), marker=dict(size=4), hovertemplate=fname + "<br>Data: " + hover_x_format + "<br>y: %{y:.4f}<extra></extra>", showlegend=False), row=3, col=1)
+            
+            # L diff - X軸変更対応
+            temp_sgray = d["meas_gray"]
+            temp_slum = d["meas_lum"]
+            temp_sort_asc = np.argsort(temp_sgray)
+            temp_lum_asc = temp_slum[temp_sort_asc]
+            temp_l_diff_asc = np.zeros_like(temp_lum_asc)
+            temp_l_diff_asc[1:] = np.diff(temp_lum_asc)
+            temp_l_diff_asc[0] = np.nan
+            temp_l_diff = np.zeros_like(temp_slum)
+            temp_l_diff[temp_sort_asc] = temp_l_diff_asc
+
+            fig.add_trace(go.Scatter(x=color_x_data, y=temp_l_diff, mode='lines+markers', name=f"L diff ({fname})", line=dict(color=c, width=2), marker=dict(size=4), hovertemplate=fname + "<br>Data: " + hover_x_format + "<br>L diff: %{y:.3f}<extra></extra>", showlegend=False), row=3, col=2)
+
+    # データ量（Grayscaleの最大値）に合わせたX軸の動的範囲計算
+    max_gray_val = 255.0
+    for fname in display_files:
+        if fname in parsed_data:
+            mg_max = float(np.max(parsed_data[fname]["meas_gray"]))
+            if mg_max > max_gray_val:
+                max_gray_val = mg_max
+                
+    gray_x_range = [-5, max_gray_val + 5]
+    gray_x_title = f"Input Grayscale (0-{int(max_gray_val)})"
+
+    fig.update_xaxes(title_text=gray_x_title, range=gray_x_range, row=1, col=1)
+    fig.update_xaxes(title_text=gray_x_title, range=gray_x_range, row=1, col=2)
     
+    # 2行目および3行目のX軸設定を統合
     if color_x_axis == "Luminance":
         fig.update_xaxes(title_text=y_title, row=2, col=1)
         fig.update_xaxes(title_text=y_title, row=2, col=2)
+        fig.update_xaxes(title_text=y_title, row=3, col=1)
+        fig.update_xaxes(title_text=y_title, row=3, col=2)
     else:
-        fig.update_xaxes(title_text="Input Grayscale (0-255)", range=[-5, 260], row=2, col=1)
-        fig.update_xaxes(title_text="Input Grayscale (0-255)", range=[-5, 260], row=2, col=2)
+        fig.update_xaxes(title_text=gray_x_title, range=gray_x_range, row=2, col=1)
+        fig.update_xaxes(title_text=gray_x_title, range=gray_x_range, row=2, col=2)
+        fig.update_xaxes(title_text=gray_x_title, range=gray_x_range, row=3, col=1)
+        fig.update_xaxes(title_text=gray_x_title, range=gray_x_range, row=3, col=2)
 
     fig.update_yaxes(title_text=y_title, row=1, col=1, range=[y_lum_min, y_lum_max])
     fig.update_yaxes(title_text="Gamma Value", row=1, col=2, range=[y_gam_min, y_gam_max])
     fig.update_yaxes(title_text="Δu'v' (Δduv)", row=2, col=1, range=[y_duv_min, y_duv_max])
     fig.update_yaxes(title_text="ΔCCT (K)", row=2, col=2, range=[y_cct_min, y_cct_max])
+    fig.update_yaxes(title_text="Color Coordinate (x, y)", row=3, col=1, range=[y_xy_min, y_xy_max])
+    fig.update_yaxes(title_text="Luminance Diff", row=3, col=2, range=[y_ldiff_min, y_ldiff_max])
     
-    fig.update_layout(height=850, hovermode="closest", legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5, bgcolor="rgba(255, 255, 255, 0.8)", bordercolor="lightgray", borderwidth=1), margin=dict(t=80))
+    # 高さを1100に維持
+    fig.update_layout(height=1100, hovermode="closest", legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5, bgcolor="rgba(255, 255, 255, 0.8)", bordercolor="lightgray", borderwidth=1), margin=dict(t=80))
     
     # ワーニングを回避するため、width="stretch" を使用
     st.plotly_chart(fig, width="stretch")
