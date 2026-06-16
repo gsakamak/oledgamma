@@ -430,12 +430,8 @@ if parsed_data:
             fig.add_trace(go.Scatter(x=color_x_data, y=temp_l_diff, mode='lines+markers', name=f"L diff ({fname})", line=dict(color=c, width=2), marker=dict(size=4), hovertemplate=fname + "<br>Data: " + hover_x_format + "<br>L diff: %{y:.3f}<extra></extra>", showlegend=False), row=3, col=2)
 
     # データ量（Grayscaleの最大値）に合わせたX軸の動的範囲計算
-    max_gray_val = 255.0
-    for fname in display_files:
-        if fname in parsed_data:
-            mg_max = float(np.max(parsed_data[fname]["meas_gray"]))
-            if mg_max > max_gray_val:
-                max_gray_val = mg_max
+    valid_max_vals = [float(np.max(parsed_data[fname]["meas_gray"])) for fname in display_files if fname in parsed_data]
+    max_gray_val = max(valid_max_vals) if valid_max_vals else 255.0
                 
     gray_x_range = [-5, max_gray_val + 5]
     gray_x_title = f"Input Grayscale (0-{int(max_gray_val)})"
