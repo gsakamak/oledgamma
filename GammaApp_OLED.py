@@ -346,7 +346,7 @@ if parsed_data:
         rows=3, cols=2, 
         subplot_titles=(
             "Grayscale vs Luminance", 
-            "Grayscale vs Gamma Value", 
+            f"{color_x_label} vs Gamma Value", 
             f"{color_x_label} vs Δu'v' (Δduv)", 
             f"{color_x_label} vs ΔCCT", 
             f"{color_x_label} vs Chromaticity (x, y)",
@@ -388,33 +388,72 @@ if parsed_data:
                 marker=dict(color=c, size=8, symbol='diamond'), text=hover_text_lum, hovertemplate="%{text}<br>Data: %{x:.1f}<br>Lum: %{y:.4f}<extra></extra>"
             ), row=1, col=1)
 
+        # Gamma Value グラフのX軸データ動的切り替え
+        x_cont_gam = res['lum_meas']/scale_div if color_x_axis == "Luminance" else res['x_cont_8bit']
+        x_pts_gam = d["meas_lum"]/scale_div if color_x_axis == "Luminance" else d["meas_gray"]
+        x_tgt_gam = res['lum_tgt']/scale_div if color_x_axis == "Luminance" else res['x_cont_8bit']
+        x_adj_gam = res['lum_adj']/scale_div if color_x_axis == "Luminance" else res['x_cont_8bit']
+        x_cp_gam = res['target_lum_cp']/scale_div if color_x_axis == "Luminance" else res['x_points_8bit']
+
         if show_meas:
-            fig.add_trace(go.Scatter(x=res['x_cont_8bit'], y=res['gam_meas'], name=f"Meas Gam ({fname})", line=dict(dash='dash', color=c), opacity=0.6, showlegend=False), row=1, col=2)
-            fig.add_trace(go.Scatter(x=d["meas_gray"], y=d["calc_gamma"], mode='markers', marker=dict(color=c, size=5, symbol='circle'), showlegend=False), row=1, col=2)
+            fig.add_trace(go.Scatter(x=x_cont_gam, y=res['gam_meas'], name=f"Meas Gam ({fname})", line=dict(dash='dash', color=c), opacity=0.6, showlegend=False), row=1, col=2)
+            
+            # Gamma points hover (Luminance時にGray情報を付与)
+            if color_x_axis == "Luminance":
+                ht_gam_pts = fname + "<br>Lum: %{x:.4f}<br>Gray: %{customdata:.0f}<br>Gamma: %{y:.3f}<extra></extra>"
+                cd_gam_pts = d["meas_gray"]
+            else:
+                ht_gam_pts = fname + "<br>Gray: %{x:.0f}<br>Gamma: %{y:.3f}<extra></extra>"
+                cd_gam_pts = None
+            fig.add_trace(go.Scatter(x=x_pts_gam, y=d["calc_gamma"], mode='markers', marker=dict(color=c, size=5, symbol='circle'), customdata=cd_gam_pts, hovertemplate=ht_gam_pts, showlegend=False), row=1, col=2)
+            
         if show_target:
-            fig.add_trace(go.Scatter(x=res['x_cont_8bit'], y=res['gam_tgt'], name=f"Tgt Gam ({fname})", line=dict(color=c_tgt, width=2), showlegend=False), row=1, col=2)
+            fig.add_trace(go.Scatter(x=x_tgt_gam, y=res['gam_tgt'], name=f"Tgt Gam ({fname})", line=dict(color=c_tgt, width=2), showlegend=False), row=1, col=2)
         if show_adj:
-            fig.add_trace(go.Scatter(x=res['x_cont_8bit'], y=res['gam_adj'], name=f"Adj Gam ({fname})", line=dict(dash='dot', color=c, width=2), showlegend=False), row=1, col=2)
+            fig.add_trace(go.Scatter(x=x_adj_gam, y=res['gam_adj'], name=f"Adj Gam ({fname})", line=dict(dash='dot', color=c, width=2), showlegend=False), row=1, col=2)
         if show_cp:
             hover_text_gam = [f"{fname} - {res['reg_names'][k]}<br>{res['x_reg_name']}: {res['x_points'][k]}<br>Before: {res['y_unadj_points'][k]}<br>After: {res['y_points'][k]}" for k in range(num_points)]
+            
+            # CP points hover (Luminance時にGray情報を付与)
+            if color_x_axis == "Luminance":
+                ht_cp_gam = "%{text}<br>Lum: %{x:.4f}<br>Gray: %{customdata:.1f}<br>Gamma: %{y:.3f}<extra></extra>"
+                cd_cp_gam = res['x_points_8bit']
+            else:
+                ht_cp_gam = "%{text}<br>Gray: %{x:.1f}<br>Gamma: %{y:.3f}<extra></extra>"
+                cd_cp_gam = None
             fig.add_trace(go.Scatter(
-                x=res['x_points_8bit'], y=res['gamma_cp'], mode='markers', name=f"CP Gam ({fname})",
-                marker=dict(color=c, size=8, symbol='diamond'), text=hover_text_gam, hovertemplate="%{text}<br>Data: %{x:.1f}<br>Gamma: %{y:.3f}<extra></extra>", showlegend=False
+                x=x_cp_gam, y=res['gamma_cp'], mode='markers', name=f"CP Gam ({fname})",
+                marker=dict(color=c, size=8, symbol='diamond'), text=hover_text_gam, customdata=cd_cp_gam, hovertemplate=ht_cp_gam, showlegend=False
             ), row=1, col=2)
 
         color_x_data = d["meas_lum"] / scale_div if color_x_axis == "Luminance" else d["meas_gray"]
-        hover_x_format = "%{x:.4f}" if color_x_axis == "Luminance" else "%{x}"
+        
+        # 2行目・3行目のグラフ用ホバーテンプレート (Luminance時にGray情報を付与)
+        if color_x_axis == "Luminance":
+            c_data = d["meas_gray"]
+            ht_duv = fname + "<br>Lum: %{x:.4f}<br>Gray: %{customdata:.0f}<br>Δduv: %{y:.4f}<extra></extra>"
+            ht_cct = fname + "<br>Lum: %{x:.4f}<br>Gray: %{customdata:.0f}<br>ΔCCT: %{y:.0f} K<extra></extra>"
+            ht_x   = fname + "<br>Lum: %{x:.4f}<br>Gray: %{customdata:.0f}<br>x: %{y:.4f}<extra></extra>"
+            ht_y   = fname + "<br>Lum: %{x:.4f}<br>Gray: %{customdata:.0f}<br>y: %{y:.4f}<extra></extra>"
+            ht_ld  = fname + "<br>Lum: %{x:.4f}<br>Gray: %{customdata:.0f}<br>L diff: %{y:.3f}<extra></extra>"
+        else:
+            c_data = None
+            ht_duv = fname + "<br>Gray: %{x:.0f}<br>Δduv: %{y:.4f}<extra></extra>"
+            ht_cct = fname + "<br>Gray: %{x:.0f}<br>ΔCCT: %{y:.0f} K<extra></extra>"
+            ht_x   = fname + "<br>Gray: %{x:.0f}<br>x: %{y:.4f}<extra></extra>"
+            ht_y   = fname + "<br>Gray: %{x:.0f}<br>y: %{y:.4f}<extra></extra>"
+            ht_ld  = fname + "<br>Gray: %{x:.0f}<br>L diff: %{y:.3f}<extra></extra>"
 
         if show_meas:
-            fig.add_trace(go.Scatter(x=color_x_data, y=d["delta_uv"], mode='lines+markers', name=f"Δduv ({fname})", line=dict(color=c, width=2), marker=dict(size=4), hovertemplate=fname + "<br>Data: " + hover_x_format + "<br>Δduv: %{y:.4f}<extra></extra>", showlegend=False), row=2, col=1)
+            fig.add_trace(go.Scatter(x=color_x_data, y=d["delta_uv"], mode='lines+markers', name=f"Δduv ({fname})", line=dict(color=c, width=2), marker=dict(size=4), customdata=c_data, hovertemplate=ht_duv, showlegend=False), row=2, col=1)
 
         if show_meas:
-            fig.add_trace(go.Scatter(x=color_x_data, y=d["delta_cct"], mode='lines+markers', name=f"ΔCCT ({fname})", line=dict(color=c, width=2), marker=dict(size=4), hovertemplate=fname + "<br>Data: " + hover_x_format + "<br>ΔCCT: %{y:.0f} K<extra></extra>", showlegend=False), row=2, col=2)
+            fig.add_trace(go.Scatter(x=color_x_data, y=d["delta_cct"], mode='lines+markers', name=f"ΔCCT ({fname})", line=dict(color=c, width=2), marker=dict(size=4), customdata=c_data, hovertemplate=ht_cct, showlegend=False), row=2, col=2)
 
         # Chromaticity (x, y) - X軸変更対応
         if show_meas:
-            fig.add_trace(go.Scatter(x=color_x_data, y=d["meas_x"], mode='lines+markers', name=f"x ({fname})", line=dict(color=c, width=2, dash='solid'), marker=dict(size=4), hovertemplate=fname + "<br>Data: " + hover_x_format + "<br>x: %{y:.4f}<extra></extra>", showlegend=False), row=3, col=1)
-            fig.add_trace(go.Scatter(x=color_x_data, y=d["meas_y"], mode='lines+markers', name=f"y ({fname})", line=dict(color=c, width=2, dash='dash'), marker=dict(size=4), hovertemplate=fname + "<br>Data: " + hover_x_format + "<br>y: %{y:.4f}<extra></extra>", showlegend=False), row=3, col=1)
+            fig.add_trace(go.Scatter(x=color_x_data, y=d["meas_x"], mode='lines+markers', name=f"x ({fname})", line=dict(color=c, width=2, dash='solid'), marker=dict(size=4), customdata=c_data, hovertemplate=ht_x, showlegend=False), row=3, col=1)
+            fig.add_trace(go.Scatter(x=color_x_data, y=d["meas_y"], mode='lines+markers', name=f"y ({fname})", line=dict(color=c, width=2, dash='dash'), marker=dict(size=4), customdata=c_data, hovertemplate=ht_y, showlegend=False), row=3, col=1)
             
             # L diff - X軸変更対応
             temp_sgray = d["meas_gray"]
@@ -427,7 +466,7 @@ if parsed_data:
             temp_l_diff = np.zeros_like(temp_slum)
             temp_l_diff[temp_sort_asc] = temp_l_diff_asc
 
-            fig.add_trace(go.Scatter(x=color_x_data, y=temp_l_diff, mode='lines+markers', name=f"L diff ({fname})", line=dict(color=c, width=2), marker=dict(size=4), hovertemplate=fname + "<br>Data: " + hover_x_format + "<br>L diff: %{y:.3f}<extra></extra>", showlegend=False), row=3, col=2)
+            fig.add_trace(go.Scatter(x=color_x_data, y=temp_l_diff, mode='lines+markers', name=f"L diff ({fname})", line=dict(color=c, width=2), marker=dict(size=4), customdata=c_data, hovertemplate=ht_ld, showlegend=False), row=3, col=2)
 
     # データ量（Grayscaleの最大値）に合わせたX軸の動的範囲計算
     valid_max_vals = [float(np.max(parsed_data[fname]["meas_gray"])) for fname in display_files if fname in parsed_data]
@@ -437,15 +476,16 @@ if parsed_data:
     gray_x_title = f"Input Grayscale (0-{int(max_gray_val)})"
 
     fig.update_xaxes(title_text=gray_x_title, range=gray_x_range, row=1, col=1)
-    fig.update_xaxes(title_text=gray_x_title, range=gray_x_range, row=1, col=2)
     
-    # 2行目および3行目のX軸設定を統合
+    # 1行目右、2行目、3行目のX軸設定を統合
     if color_x_axis == "Luminance":
+        fig.update_xaxes(title_text=y_title, row=1, col=2)
         fig.update_xaxes(title_text=y_title, row=2, col=1)
         fig.update_xaxes(title_text=y_title, row=2, col=2)
         fig.update_xaxes(title_text=y_title, row=3, col=1)
         fig.update_xaxes(title_text=y_title, row=3, col=2)
     else:
+        fig.update_xaxes(title_text=gray_x_title, range=gray_x_range, row=1, col=2)
         fig.update_xaxes(title_text=gray_x_title, range=gray_x_range, row=2, col=1)
         fig.update_xaxes(title_text=gray_x_title, range=gray_x_range, row=2, col=2)
         fig.update_xaxes(title_text=gray_x_title, range=gray_x_range, row=3, col=1)
